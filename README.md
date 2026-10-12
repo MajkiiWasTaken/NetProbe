@@ -2,7 +2,7 @@
 
 **NetProbe** is a lightweight, cross-platform network diagnostics CLI written in Rust. Designed for developers and administrators to troubleshoot networks, Raspberry Pi devices, Linux servers, and TCP services.
 
-**Version:** `v0.6.0` | **Platforms:** Windows & Linux | **License:** MIT
+**Platforms:** Windows & Linux | **License:** MIT
 
 ## Features
 
@@ -124,7 +124,7 @@ cargo build --release
 
 ## Author
 
-**Michal Švrček** — [MajkiiWasTaken](https://github.com/MajkiiWasTaken)
+**Michal Švrček**
 
 ## License
 
