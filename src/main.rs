@@ -8,6 +8,7 @@
 *************************************************/
 
 mod discover;
+mod monitor;
 mod net;
 mod output;
 mod service;
@@ -93,6 +94,32 @@ enum Commands {
         /// Disable HTTPS certificate verification (diagnostics only)
         #[arg(long)]
         insecure: bool,
+    },
+
+    /// Monitor TCP connectivity and latency over time
+    Monitor {
+        /// Hostname or IP address
+        host: String,
+
+        /// TCP port to monitor
+        #[arg(long, default_value_t = 22)]
+        port: u16,
+
+        /// Interval between measurements in seconds
+        #[arg(long, default_value_t = 5)]
+        interval: u64,
+
+        /// Connection timeout in milliseconds
+        #[arg(long, default_value_t = 1000)]
+        timeout_ms: u64,
+
+        /// Number of checks (omit to run until Ctrl+C)
+        #[arg(long)]
+        count: Option<u64>,
+
+        /// Save monitoring history to a JSON file
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
     },
 }
 
@@ -247,6 +274,24 @@ fn run() -> Result<(), String> {
             }
 
             output::ok(&result.description);
+        }
+
+        Commands::Monitor {
+            host,
+            port,
+            interval,
+            timeout_ms,
+            count,
+            json,
+        } => {
+            monitor::run(monitor::MonitorOptions {
+                host: &host,
+                port,
+                interval,
+                timeout_ms,
+                count,
+                json: json.as_deref(),
+            })?;
         }
     }
     Ok(())
