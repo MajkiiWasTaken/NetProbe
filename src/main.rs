@@ -10,6 +10,7 @@
 mod discover;
 mod net;
 mod output;
+mod service;
 
 use clap::{Parser, Subcommand};
 use std::{process::ExitCode, time::Duration};
@@ -68,6 +69,30 @@ enum Commands {
         /// Maximum number of concurrent workers
         #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u8).range(1..=64))]
         threads: u8,
+    },
+    /// Diagnose an SSH, HTTP, HTTPS, Modbus TCP or MQTT service
+    Service {
+        /// Protocol: SSH, HTTP, HTPPS, MODBUS TCP, MQTT
+        kind: String,
+
+        /// Hostname or IP
+        host: String,
+
+        /// Custom TCP port
+        #[arg(long)]
+        port: Option<u16>,
+
+        /// Connection timeout val in millis
+        #[arg(long, default_value_t = 3000)]
+        timeout_ms: u64,
+
+        /// Modbus TCP Unit ID
+        #[arg(long, default_value_t = 1)]
+        unit_id: u8,
+
+        /// Disable HTTPS certificate verification (diagnostics only)
+        #[arg(long)]
+        insecure: bool,
     },
 }
 
@@ -188,6 +213,40 @@ fn run() -> Result<(), String> {
             if result.hosts.is_empty() {
                 output::warn("No TCP-responsive hosts found on the selected ports.");
             }
+        }
+
+        Commands::Service {
+            kind,
+            host,
+            port,
+            timeout_ms,
+            unit_id,
+            insecure,
+        } => {
+            if !(1..=30_000).contains(&timeout_ms) {
+                return Err("Timeout must be between 1 and 30000 ms".into());
+            }
+
+            output::heading(&format!(
+                "{} diagnostics: {}",
+                kind.to_ascii_uppercase(),
+                host
+            ));
+
+            let result = service::check(
+                &kind,
+                &host,
+                port,
+                Duration::from_millis(timeout_ms),
+                unit_id,
+                insecure,
+            )?;
+
+            for detail in &result.details {
+                output::info(detail);
+            }
+
+            output::ok(&result.description);
         }
     }
     Ok(())
