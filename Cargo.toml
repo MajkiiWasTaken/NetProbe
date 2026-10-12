@@ -1,0 +1,15 @@
+[package]
+name = "netprobe"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michal Švrček"]
+description = "Cross-platform network diagnostics CLI"
+license = "MIT"
+
+[[bin]]
+name = "nprobe"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+colored = "3"
