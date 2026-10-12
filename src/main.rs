@@ -4,10 +4,13 @@
 *
 * NetProbe command line interface
 *
-* ver. 0.1.0
+* ver. 0.2.0
 *************************************************/
+
+mod discover;
 mod net;
 mod output;
+
 use clap::{Parser, Subcommand};
 use std::{process::ExitCode, time::Duration};
 
@@ -48,6 +51,23 @@ enum Commands {
         ports: String,
         #[arg(long, default_value_t = 500, value_parser = clap::value_parser!(u64).range(1..=30000))]
         timeout_ms: u64,
+    },
+    /// Discover TCP-responsive hosts in a local IPv4 subnet
+    Discover {
+        /// Local IPv4 subnet, e.g. 192.168.1.0/24
+        subnet: String,
+
+        /// TCP ports used for host detection
+        #[arg(long, default_value = "22,80,443,502,1883")]
+        ports: String,
+
+        /// Timeout per TCP connection in milliseconds
+        #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=10000))]
+        timeout_ms: u64,
+
+        /// Maximum number of concurrent workers
+        #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u8).range(1..=64))]
+        threads: u8,
     },
 }
 
@@ -108,6 +128,66 @@ fn run() -> Result<(), String> {
                 }
             }
             output::info(&format!("Checked {} ports, {open} reachable", ports.len()));
+        }
+        Commands::Discover {
+            subnet,
+            ports,
+            timeout_ms,
+            threads,
+        } => {
+            let ports = net::parse_ports(&ports)?;
+
+            output::heading(&format!("Network discovery: {subnet}"));
+
+            let addresses = discover::parse_subnet(&subnet)?;
+
+            output::info(&format!(
+                "Scanning {} addresses using {} workers",
+                addresses.len(),
+                threads
+            ));
+
+            output::info(&format!(
+                "TCP ports: {}",
+                ports
+                    .iter()
+                    .map(u16::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+
+            let result = discover::discover(
+                &subnet,
+                &ports,
+                Duration::from_millis(timeout_ms),
+                threads as usize,
+            )?;
+
+            println!();
+
+            for host in &result.hosts {
+                let port_list = host
+                    .open_ports
+                    .iter()
+                    .map(u16::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",");
+
+                output::ok(&format!("{:<16} TCP {}", host.ip, port_list));
+            }
+
+            println!();
+
+            output::info(&format!(
+                "Scanned {} addresses, {} responsive hosts, {:.2}s",
+                result.scanned,
+                result.hosts.len(),
+                result.elapsed.as_secs_f64()
+            ));
+
+            if result.hosts.is_empty() {
+                output::warn("No TCP-responsive hosts found on the selected ports.");
+            }
         }
     }
     Ok(())
