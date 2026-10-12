@@ -4,7 +4,7 @@
 *
 * NetProbe command line interface
 *
-* ver. 0.2.0
+* ver. 0.6.0
 *************************************************/
 
 mod config;
@@ -186,18 +186,26 @@ fn run() -> Result<(), String> {
                 return Err("Ping failed or ICMP is blocked".into());
             }
         }
+
         Commands::Tcp {
             host,
             port,
             timeout_ms,
         } => {
-            output::heading(&format!("TCP: {host}:{port}"));
-            let (addr, elapsed) = net::tcp(&host, port, Duration::from_millis(timeout_ms))?;
+            let config = config::Config::load()?;
+            let resolved_host = config.resolve_host(&host);
+
+            output::heading(&format!("TCP: {host} ({resolved_host}):{port}"));
+
+            let (addr, elapsed) =
+                net::tcp(&resolved_host, port, Duration::from_millis(timeout_ms))?;
+
             output::ok(&format!(
                 "Connected to {addr} in {} ms",
                 elapsed.as_millis()
             ));
         }
+
         Commands::Scan {
             host,
             ports,
@@ -294,19 +302,44 @@ fn run() -> Result<(), String> {
                 return Err("Timeout must be between 1 and 30000 ms".into());
             }
 
+            let config = config::Config::load()?;
+            let resolved_host = config.resolve_host(&host);
+
+            let service_kind = kind.to_ascii_lowercase();
+
+            let profile_service = config
+                .devices
+                .get(&host)
+                .and_then(|device| device.services.get(&service_kind));
+
+            let resolved_port = port.or_else(|| profile_service.map(|service| service.port));
+
+            let resolved_insecure = insecure
+                || profile_service
+                    .map(|service| service.insecure)
+                    .unwrap_or(false);
+
             output::heading(&format!(
                 "{} diagnostics: {}",
-                kind.to_ascii_uppercase(),
-                host
+                service_kind.to_ascii_uppercase(),
+                resolved_host
             ));
 
+            if host != resolved_host {
+                output::info(&format!("Device profile: {host}"));
+            }
+
+            if resolved_insecure && service_kind == "https" {
+                output::warn("TLS certificate verification is disabled");
+            }
+
             let result = service::check(
-                &kind,
-                &host,
-                port,
+                &service_kind,
+                &resolved_host,
+                resolved_port,
                 Duration::from_millis(timeout_ms),
                 unit_id,
-                insecure,
+                resolved_insecure,
             )?;
 
             for detail in &result.details {
