@@ -7,6 +7,8 @@
 * ver. 0.2.0
 *************************************************/
 
+mod config;
+mod device;
 mod discover;
 mod monitor;
 mod net;
@@ -25,6 +27,34 @@ use std::{process::ExitCode, time::Duration};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(clap::Subcommand)]
+enum DeviceCommands {
+    /// Add a new device
+    Add {
+        name: String,
+
+        #[arg(long)]
+        host: String,
+
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+
+    /// List configured devices
+    List,
+
+    /// Show device information
+    Info { name: String },
+
+    /// Remove a device
+    Remove {
+        name: String,
+
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -101,9 +131,13 @@ enum Commands {
         /// Hostname or IP address
         host: String,
 
-        /// TCP port to monitor
-        #[arg(long, default_value_t = 22)]
-        port: u16,
+        /// Explicit TCP port (overrides the device service port)
+        #[arg(long)]
+        port: Option<u16>,
+
+        /// Service configured in the device profile
+        #[arg(long)]
+        service: Option<String>,
 
         /// Interval between measurements in seconds
         #[arg(long, default_value_t = 5)]
@@ -120,6 +154,12 @@ enum Commands {
         /// Save monitoring history to a JSON file
         #[arg(long)]
         json: Option<std::path::PathBuf>,
+    },
+
+    /// Manage saved device profiles
+    Device {
+        #[command(subcommand)]
+        command: DeviceCommands,
     },
 }
 
@@ -279,20 +319,46 @@ fn run() -> Result<(), String> {
         Commands::Monitor {
             host,
             port,
+            service,
             interval,
             timeout_ms,
             count,
             json,
         } => {
+            let (resolved_host, resolved_port) =
+                device::resolve_monitor_target(&host, service.as_deref(), port)?;
+
             monitor::run(monitor::MonitorOptions {
-                host: &host,
-                port,
+                host: &resolved_host,
+                port: resolved_port,
                 interval,
                 timeout_ms,
                 count,
                 json: json.as_deref(),
             })?;
         }
+
+        Commands::Device { command } => match command {
+            DeviceCommands::Add {
+                name,
+                host,
+                description,
+            } => {
+                device::add(&name, &host, &description)?;
+            }
+
+            DeviceCommands::List => {
+                device::list()?;
+            }
+
+            DeviceCommands::Info { name } => {
+                device::info(&name)?;
+            }
+
+            DeviceCommands::Remove { name, yes } => {
+                device::remove(&name, yes)?;
+            }
+        },
     }
     Ok(())
 }
